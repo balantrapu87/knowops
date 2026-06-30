@@ -22,6 +22,10 @@ pipeline:
   embedding_batch_size: 8      # bge-m3 docs per Ollama call
   freshness_warning_days: 180  # answers flag sources older than this
   default_time_sensitivity: medium
+  # Recency reranking only considers candidates scoring at least
+  # relevance_floor_ratio * top_semantic_score. This stops a fresh-but-
+  # irrelevant document from being promoted over a relevant one.
+  relevance_floor_ratio: 0.7
 
 freshness_profiles:
 
@@ -36,14 +40,14 @@ freshness_profiles:
 
   # Balanced default for general Q&A.
   medium:
-    semantic_weight: 0.70
-    freshness_weight: 0.30
-    decay_days: 180
+    semantic_weight: 0.60
+    freshness_weight: 0.40
+    decay_days: 150
     date_filter_days: null
 
-  # Reference / historical lookups where recency barely matters.
+  # Reference / historical lookups where recency matters less.
   low:
-    semantic_weight: 0.85
-    freshness_weight: 0.15
-    decay_days: 365
+    semantic_weight: 0.75
+    freshness_weight: 0.25
+    decay_days: 240
     date_filter_days: null

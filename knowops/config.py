@@ -69,6 +69,10 @@ class Settings:
     embedding_batch_size: int
     freshness_warning_days: int
     default_time_sensitivity: str
+    # Recency reranking only applies among candidates scoring at least
+    # relevance_floor_ratio * top_semantic_score — so a fresh-but-irrelevant
+    # document can never outrank a relevant one.
+    relevance_floor_ratio: float
     # Freshness profiles keyed by time_sensitivity (high|medium|low)
     profiles: dict[str, FreshnessProfile]
 
@@ -148,6 +152,9 @@ def load_settings(pipeline_config_path: Optional[str | Path] = None) -> Settings
             "FRESHNESS_WARNING_DAYS", "freshness_warning_days", 180
         ),
         default_time_sensitivity=default_ts,
+        relevance_floor_ratio=float(
+            os.getenv("RELEVANCE_FLOOR_RATIO", pipe.get("relevance_floor_ratio", 0.7))
+        ),
         profiles=profiles,
     )
 
