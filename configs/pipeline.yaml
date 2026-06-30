@@ -1,0 +1,49 @@
+# KnowOps pipeline configuration
+# ---------------------------------------------------------------------------
+# The Planner classifies each question's `time_sensitivity` (high|medium|low).
+# That label selects a freshness profile below, which the Retriever and
+# Reranker apply. This is how "date awareness" is configured without code
+# changes — tune these numbers, not the Python.
+#
+# How the numbers are used (see knowops/freshness.py):
+#   hybrid_score = semantic_weight * cosine_similarity
+#                + freshness_weight * exp(-age_days / decay_days)
+#
+# Design note — date_filter_days is intentionally null by default.
+#   Several "current/correct" documents in this corpus are 6-14 months old.
+#   A HARD date cut-off would wrongly exclude them and break retrieval, so
+#   recency is applied as a SOFT score (freshness_weight), not a filter.
+#   Set date_filter_days to a number only to trim obviously ancient noise;
+#   it never drops a doc newer than the cut-off.
+
+pipeline:
+  retriever_top_k: 20          # candidates pulled from the vector store
+  reranker_top_k: 5            # documents passed to the Answering agent
+  embedding_batch_size: 8      # bge-m3 docs per Ollama call
+  freshness_warning_days: 180  # answers flag sources older than this
+  default_time_sensitivity: medium
+
+freshness_profiles:
+
+  # Time-critical: "current", "latest", "now", procedures, policies, configs.
+  # Recency is weighted heavily so a newer doc overtakes a marginally more
+  # similar but stale one.
+  high:
+    semantic_weight: 0.55
+    freshness_weight: 0.45
+    decay_days: 120
+    date_filter_days: null
+
+  # Balanced default for general Q&A.
+  medium:
+    semantic_weight: 0.70
+    freshness_weight: 0.30
+    decay_days: 180
+    date_filter_days: null
+
+  # Reference / historical lookups where recency barely matters.
+  low:
+    semantic_weight: 0.85
+    freshness_weight: 0.15
+    decay_days: 365
+    date_filter_days: null
