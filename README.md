@@ -164,6 +164,13 @@ python scripts/ask.py                 # interactive REPL
 Freshness behaviour lives in [`configs/pipeline.yaml`](configs/pipeline.yaml) as per-intent
 profiles; secrets and endpoints live in [`.env`](.env.example).
 
+**Metadata backend (live).** `METADATA_BACKEND=milvus` (default) reads scalar fields
+(`updated_ts`, `source_type`, `trap_group`) straight from Milvus — one store on the hot path.
+`METADATA_BACKEND=postgres` joins Milvus vector hits to the authoritative Postgres metadata
+table by `doc_id` (freshness then uses Postgres `updated_ts`) and unlocks relational filters
+via `scripts/metadata_query.py` (e.g. "high-priority bugs updated in the last 30 days").
+Offline mode ignores this — it reads the JSON corpus directly.
+
 | Where | Setting | Default | What it does |
 |-------|---------|---------|--------------|
 | yaml  | `freshness_profiles.{high,medium,low}` | — | `semantic_weight`, `freshness_weight`, `decay_days`, `date_filter_days` per time-sensitivity |
@@ -171,6 +178,7 @@ profiles; secrets and endpoints live in [`.env`](.env.example).
 | yaml  | `retriever_top_k` / `reranker_top_k` | `20` / `5` | candidates fetched / kept |
 | yaml  | `freshness_warning_days` | `180` | answers flag sources older than this |
 | env   | `KNOWOPS_OFFLINE` | `0` | `1` = no external services |
+| env   | `METADATA_BACKEND` | `milvus` | live metadata source: `milvus` (scalar fields from the vector store) or `postgres` (join to the metadata table) |
 | env   | `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` | — / `anthropic/claude-sonnet-4` | live LLM agents |
 
 ---
@@ -194,7 +202,8 @@ KnowOps/
 │   ├── ingest.py                # ingest data → Milvus + Postgres (live)
 │   ├── generate_dataset.py      # Phase 2: scale dataset generator
 │   ├── demo.py                  # before/after comparison
-│   └── ask.py                   # interactive Q&A CLI
+│   ├── ask.py                   # interactive Q&A CLI
+│   └── metadata_query.py        # Postgres-only SQL queries (recent bugs, related docs)
 ├── data/                        # 60 Jira + 60 Confluence + 10 trap groups
 ├── tests/                       # 143 tests (run offline)
 └── docker-compose.yml           # Milvus + Postgres + Ollama

@@ -63,6 +63,10 @@ class Settings:
     openrouter_base_url: str
     # Mode
     offline: bool
+    # Metadata source for the live retrieval path: "milvus" (read scalar fields
+    # straight from the vector store) or "postgres" (join doc_ids to the
+    # authoritative Postgres metadata table). Ignored in offline mode.
+    metadata_backend: str
     # Pipeline scalars
     retriever_top_k: int
     reranker_top_k: int
@@ -145,6 +149,9 @@ def load_settings(pipeline_config_path: Optional[str | Path] = None) -> Settings
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         ),
         offline=_as_bool(os.getenv("KNOWOPS_OFFLINE"), default=False),
+        metadata_backend=os.getenv(
+            "METADATA_BACKEND", pipe.get("metadata_backend", "milvus")
+        ).strip().lower(),
         retriever_top_k=_int("RETRIEVER_TOP_K", "retriever_top_k", 20),
         reranker_top_k=_int("RERANKER_TOP_K", "reranker_top_k", 5),
         embedding_batch_size=_int("EMBEDDING_BATCH_SIZE", "embedding_batch_size", 8),

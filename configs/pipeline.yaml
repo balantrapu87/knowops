@@ -22,6 +22,10 @@ pipeline:
   embedding_batch_size: 8      # bge-m3 docs per Ollama call
   freshness_warning_days: 180  # answers flag sources older than this
   default_time_sensitivity: medium
+  # Live metadata source: "milvus" (scalar fields from the vector store) or
+  # "postgres" (join to the authoritative metadata table). Env METADATA_BACKEND
+  # overrides this. Ignored in offline mode.
+  metadata_backend: milvus
   # Recency reranking only considers candidates scoring at least
   # relevance_floor_ratio * top_semantic_score. This stops a fresh-but-
   # irrelevant document from being promoted over a relevant one.

@@ -220,13 +220,76 @@ class MilvusBackend:
 
 # ── Factory ──────────────────────────────────────────────────────────────────
 
+def merge_postgres_metadata(
+    candidates: list[Candidate], metadata: dict[str, dict]
+) -> list[Candidate]:
+    """Overlay authoritative Postgres metadata onto Milvus vector hits (in place).
+
+    Pure function (no DB/Milvus) so the join logic is unit-testable offline.
+    Milvus stays the source of `content` and `semantic_score`; Postgres owns
+    source_type/title/dates/trap_group — and crucially the `updated_ts` that
+    feeds freshness scoring. Missing doc_ids keep their Milvus fallback values.
+    """
+    for c in candidates:
+        meta = metadata.get(c.doc_id)
+        if not meta:
+            continue
+        c.source_type = meta.get("source_type", c.source_type)
+        c.title = meta.get("title", c.title)
+        c.created_ts = meta.get("created_ts", c.created_ts)
+        c.updated_ts = meta.get("updated_ts", c.updated_ts)
+        c.trap_group = meta.get("trap_group", c.trap_group)
+    return candidates
+
+
+class MilvusPostgresBackend:
+    """Hybrid backend: similarity from Milvus, canonical metadata from Postgres.
+
+    Separation of concerns — Milvus does ANN over vectors; Postgres is the
+    authoritative metadata store (and enables rich SQL filters elsewhere).
+    The ANN pre-filter (source/date) still runs on Milvus scalar fields for
+    speed; the returned docs then have their metadata + freshness `updated_ts`
+    sourced from Postgres.
+    """
+
+    def __init__(self, settings: Settings = SETTINGS):
+        self.settings = settings
+        self._milvus = MilvusBackend(settings=settings)
+
+    def semantic_search(
+        self,
+        query_text: str,
+        top_k: int,
+        source_filter: str = "both",
+        date_filter_days: Optional[int] = None,
+        now: Optional[float] = None,
+    ) -> list[Candidate]:
+        candidates = self._milvus.semantic_search(
+            query_text,
+            top_k,
+            source_filter=source_filter,
+            date_filter_days=date_filter_days,
+            now=now,
+        )
+        from knowops.db import fetch_metadata
+
+        metadata = fetch_metadata([c.doc_id for c in candidates])
+        return merge_postgres_metadata(candidates, metadata)
+
+
 def get_backend(
     offline: Optional[bool] = None,
     settings: Settings = SETTINGS,
     data_dir: str | Path = _DEFAULT_DATA_DIR,
 ):
-    """Return the offline or Milvus backend based on ``offline`` (defaults to SETTINGS)."""
+    """Return the backend for the active mode.
+
+    offline → OfflineBackend; live + METADATA_BACKEND=postgres → hybrid
+    Milvus+Postgres; live (default) → Milvus-only.
+    """
     use_offline = settings.offline if offline is None else offline
     if use_offline:
         return OfflineBackend(data_dir=data_dir)
+    if settings.metadata_backend == "postgres":
+        return MilvusPostgresBackend(settings=settings)
     return MilvusBackend(settings=settings)

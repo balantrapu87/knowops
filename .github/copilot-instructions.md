@@ -27,6 +27,8 @@ Everything runs **offline** (deterministic, no services) or **live** (Milvus + O
 OpenRouter Claude on the server). Set `KNOWOPS_OFFLINE=1` or pass `offline=True`.
 - Offline: lexical feature-hash embeddings (`embedder.embed_offline`), in-memory brute-force search
   (`search.OfflineBackend`), deterministic agent logic. `LLMClient.complete()` is never called offline.
+- Live metadata source is switchable via `METADATA_BACKEND` (`milvus` default, or `postgres` to join
+  the metadata table — see `search.MilvusPostgresBackend`). Offline ignores it.
 - Add an offline path for any new agent/backend. All config flows through `knowops/config.SETTINGS` —
   don't read `os.environ` directly elsewhere.
 
