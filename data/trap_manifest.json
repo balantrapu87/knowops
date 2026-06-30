@@ -1,0 +1,72 @@
+[
+  {
+    "trap_group": "trap-milvus-search-timeout",
+    "topic": "Milvus vector search timeout fix and correct configuration",
+    "correct_document_id": "JIRA-1029",
+    "outdated_document_ids": ["JIRA-1001"],
+    "expected_behavior": "A recency-aware retriever should return JIRA-1029 (updated 2025-11-28) which describes the confirmed root cause (IVF_FLAT nlist=32) and the correct fix (HNSW index, revert timeout to 10s, batch_size=8 safe). A semantic-only retriever is likely to return JIRA-1001 (updated 2024-09-25) which describes only a workaround (60s timeout) that is now known to be incorrect guidance."
+  },
+  {
+    "trap_group": "trap-ollama-oom",
+    "topic": "Ollama OOM crash fix and correct embedding batch size",
+    "correct_document_id": "JIRA-1030",
+    "outdated_document_ids": ["JIRA-1002"],
+    "expected_behavior": "A recency-aware retriever should return JIRA-1030 (updated 2026-02-10) which specifies the correct fix: OLLAMA_NUM_PARALLEL=1, OLLAMA_MAX_LOADED_MODELS=1, and batch_size=8 (not 4). A semantic-only retriever may return JIRA-1002 (updated 2024-10-12) which recommends batch_size=4 — a now-deprecated workaround that hurts throughput unnecessarily."
+  },
+  {
+    "trap_group": "trap-milvus-index-type",
+    "topic": "Recommended Milvus index type and configuration for KnowOps",
+    "correct_document_id": "CONF-2049",
+    "outdated_document_ids": ["CONF-2001"],
+    "expected_behavior": "A recency-aware retriever should return CONF-2049 (updated 2025-12-20) which specifies HNSW (M=16, ef_construction=200) as the correct index type and sets client timeout to 10 seconds. A semantic-only retriever may return CONF-2001 (updated 2024-09-28) which incorrectly recommends IVF_FLAT (nlist=32) and a 60-second timeout — the configuration that caused the production latency regression documented in JIRA-1029."
+  },
+  {
+    "trap_group": "trap-db-pool-config",
+    "topic": "PostgreSQL connection pool size and max_overflow settings",
+    "correct_document_id": "CONF-2050",
+    "outdated_document_ids": ["CONF-2002"],
+    "expected_behavior": "A recency-aware retriever should return CONF-2050 (updated 2026-02-10) which specifies pool_size=10 and max_overflow=5 as the current correct settings. A semantic-only retriever may return CONF-2002 (updated 2024-09-10) which specifies pool_size=5 and max_overflow=0 — settings that cause connection pool exhaustion under production ingestion load as documented in JIRA-1003."
+  },
+  {
+    "trap_group": "trap-api-rate-limit",
+    "topic": "KnowOps API rate limit per authenticated client",
+    "correct_document_id": "CONF-2051",
+    "outdated_document_ids": ["CONF-2003"],
+    "expected_behavior": "A recency-aware retriever should return CONF-2051 (updated 2025-11-01) which states the current rate limit is 500 requests per minute for authenticated clients. A semantic-only retriever may return CONF-2003 (updated 2024-10-15) which states the limit is 100 requests per minute — the pre-infrastructure-upgrade value that is now incorrect and would cause callers to implement unnecessarily aggressive throttling."
+  },
+  {
+    "trap_group": "trap-rollback-procedure",
+    "topic": "Production deployment rollback procedure and steps",
+    "correct_document_id": "CONF-2052",
+    "outdated_document_ids": ["CONF-2004"],
+    "expected_behavior": "A recency-aware retriever should return CONF-2052 (updated 2026-04-15) which includes a pre-rollback checklist, database migration safety check, rolling restart command, PagerDuty notification, and post-rollback smoke test steps. A semantic-only retriever may return CONF-2004 (updated 2024-10-01) which is missing the pre-rollback state snapshot, database migration check, and PagerDuty notification — gaps that caused an unsafe rollback incident."
+  },
+  {
+    "trap_group": "trap-auth-token-expiry",
+    "topic": "JWT access token expiry duration for KnowOps API",
+    "correct_document_id": "CONF-2053",
+    "outdated_document_ids": ["CONF-2005"],
+    "expected_behavior": "A recency-aware retriever should return CONF-2053 (updated 2025-12-05) which states the current access token expiry is 24 hours (with session binding as a compensating control) and refresh tokens expire in 30 days. A semantic-only retriever may return CONF-2005 (updated 2024-11-12) which states expiry is 1 hour — the pre-policy-change value that would cause developers to incorrectly implement 1-hour token refresh cycles in their clients."
+  },
+  {
+    "trap_group": "trap-kafka-topic-names",
+    "topic": "Kafka topic names for the KnowOps platform document ingestion pipeline",
+    "correct_document_id": "CONF-2054",
+    "outdated_document_ids": ["CONF-2006"],
+    "expected_behavior": "A recency-aware retriever should return CONF-2054 (updated 2026-01-30) which lists current topic names in the format platform.{domain}.{stage} (e.g. platform.documents.ingest). A semantic-only retriever may return CONF-2006 (updated 2024-11-05) which lists legacy topic names (e.g. documents.ingest) that were renamed in December 2025 and no longer exist in the cluster, causing 'Unknown topic' errors in any consumer built against the old registry."
+  },
+  {
+    "trap_group": "trap-embedding-model",
+    "topic": "Embedding model and vector dimension used by KnowOps",
+    "correct_document_id": "CONF-2055",
+    "outdated_document_ids": ["CONF-2007"],
+    "expected_behavior": "A recency-aware retriever should return CONF-2055 (updated 2026-04-20) which specifies bge-m3 via Ollama with dim=1024 as the current model. A semantic-only retriever may return CONF-2007 (updated 2024-10-22) which specifies text-embedding-ada-002 via OpenAI API with dim=1536 — a model that is no longer in use. Using the old configuration would cause dimension mismatch errors in Milvus and broken ingestion."
+  },
+  {
+    "trap_group": "trap-on-call-escalation",
+    "topic": "On-call escalation policy and who to contact for production incidents",
+    "correct_document_id": "CONF-2056",
+    "outdated_document_ids": ["CONF-2008"],
+    "expected_behavior": "A recency-aware retriever should return CONF-2056 (updated 2026-05-15) which specifies that Tier 2 escalation now goes to the SRE on-call (not the engineering lead), the Tier 2 threshold is 20 minutes (not 30), and the Tier 3 threshold is 45 minutes (not 60). A semantic-only retriever may return CONF-2008 (updated 2025-01-10) which specifies the outdated escalation path to the engineering lead — causing incidents to be routed to the wrong person and resolved more slowly."
+  }
+]

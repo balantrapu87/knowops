@@ -1,0 +1,24 @@
+# KnowOps dependencies
+# Install: pip install -r requirements.txt
+
+# Vector database client
+pymilvus>=2.4.0
+
+# PostgreSQL driver + ORM
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.30
+
+# HTTP client (sync + async) — used for Ollama and OpenRouter calls
+httpx>=0.27.0
+
+# Token counting — used to guard context window in Answering Agent
+tiktoken>=0.7.0
+
+# Progress bars for ingestion script
+tqdm>=4.66.4
+
+# Environment variable loading
+python-dotenv>=1.0.1
+
+# Phase 2 dataset generator: fake names, realistic text
+faker>=25.8.0

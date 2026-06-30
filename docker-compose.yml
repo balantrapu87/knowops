@@ -1,0 +1,188 @@
+# KnowOps — Local Stack
+# Services: Milvus (standalone) + Etcd + MinIO + PostgreSQL + Ollama (CPU)
+#
+# First-time setup:
+#   cp .env.example .env
+#   docker compose up -d
+#   # Wait ~60s for Milvus to be healthy, then the ollama-model-init
+#   # container will automatically pull bge-m3 (~1.5 GB download).
+#   python scripts/setup_collection.py
+#   python scripts/ingest.py --source all
+
+version: "3.8"
+
+networks:
+  knowops-net:
+    driver: bridge
+
+volumes:
+  etcd-data:
+  minio-data:
+  milvus-data:
+  postgres-data:
+  ollama-data:
+
+services:
+
+  # ──────────────────────────────────────────────────────────────
+  # Milvus dependency: etcd (stores Milvus internal metadata)
+  # ──────────────────────────────────────────────────────────────
+  etcd:
+    container_name: knowops-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    networks: [knowops-net]
+    volumes:
+      - etcd-data:/etcd
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: >
+      etcd
+      --advertise-client-urls http://127.0.0.1:2379
+      --listen-client-urls http://0.0.0.0:2379
+      --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────────
+  # Milvus dependency: MinIO (stores Milvus segment files)
+  # ──────────────────────────────────────────────────────────────
+  minio:
+    container_name: knowops-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    networks: [knowops-net]
+    volumes:
+      - minio-data:/minio_data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: minio server /minio_data --console-address ":9001"
+    ports:
+      - "9000:9000"   # MinIO S3 API
+      - "9001:9001"   # MinIO web console (http://localhost:9001)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────────
+  # Milvus standalone vector database
+  # gRPC API: localhost:19530  |  Health HTTP: localhost:9091
+  # ──────────────────────────────────────────────────────────────
+  milvus:
+    container_name: knowops-milvus
+    image: milvusdb/milvus:v2.4.5
+    networks: [knowops-net]
+    volumes:
+      - milvus-data:/var/lib/milvus
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined   # required by Milvus on Linux
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "19530:19530"  # gRPC — pymilvus connects here
+      - "9091:9091"    # HTTP health check
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 90s  # Milvus needs ~60s on first cold start
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────────
+  # PostgreSQL — document metadata + ingestion state
+  # ──────────────────────────────────────────────────────────────
+  postgres:
+    container_name: knowops-postgres
+    image: postgres:16-alpine
+    networks: [knowops-net]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-knowops}
+      POSTGRES_USER: ${POSTGRES_USER:-knowops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-knowops_dev}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: >
+        ["CMD-SHELL",
+         "pg_isready -U ${POSTGRES_USER:-knowops} -d ${POSTGRES_DB:-knowops}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────────
+  # Ollama — local LLM / embedding server (CPU-only)
+  #
+  # CPU mode: no 'runtime: nvidia' and no GPU device reservations.
+  # Memory: bge-m3 uses ~14 GB RAM peak — ensure ≥ 16 GB free.
+  #
+  # OLLAMA_NUM_PARALLEL=1 prevents loading multiple model instances
+  # concurrently, which would OOM on a 32 GB host.
+  # ──────────────────────────────────────────────────────────────
+  ollama:
+    container_name: knowops-ollama
+    image: ollama/ollama:latest
+    networks: [knowops-net]
+    volumes:
+      - ollama-data:/root/.ollama   # model weights persist across restarts
+    environment:
+      OLLAMA_HOST: "0.0.0.0"
+      OLLAMA_NUM_PARALLEL: "1"         # one request at a time — prevents OOM
+      OLLAMA_MAX_LOADED_MODELS: "1"    # only bge-m3 in memory at once
+      OLLAMA_KEEP_ALIVE: "24h"         # keep model loaded for a full day
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────────
+  # One-shot init: pull bge-m3 into Ollama after it starts.
+  # Runs once; exits with code 0 on success.
+  # On subsequent `docker compose up` this container exits quickly
+  # because the model is already cached in the ollama-data volume.
+  # ──────────────────────────────────────────────────────────────
+  ollama-model-init:
+    container_name: knowops-ollama-init
+    image: ollama/ollama:latest
+    networks: [knowops-net]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling bge-m3 (this may take a few minutes on first run)..."
+        ollama pull bge-m3
+        echo "bge-m3 is ready."
+    restart: "no"
