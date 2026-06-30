@@ -1,4 +1,6 @@
 # KnowOps
+Production-grade agentic RAG system for enterprise service management.
+Fixing date-aware retrieval in Milvus-based pipelines.
 
 Ask questions about Jira tickets and Confluence pages in plain English. Demonstrates and fixes a real bug: a search system that kept returning outdated docs because it only compared meaning, not age.
 
