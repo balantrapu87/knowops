@@ -32,7 +32,7 @@ OpenRouter Claude on the server). Set `KNOWOPS_OFFLINE=1` or pass `offline=True`
 
 ## Run / test
 ```bash
-KNOWOPS_OFFLINE=1 .venv/bin/python -m pytest tests/ -q     # full suite, no services
+.venv/bin/python -m pytest tests/ -q                       # full suite, no services
 KNOWOPS_OFFLINE=1 .venv/bin/python scripts/demo.py          # baseline vs fixed (≈2/10 vs 10/10)
 KNOWOPS_OFFLINE=1 .venv/bin/python scripts/ask.py "..."     # ask a question
 ```

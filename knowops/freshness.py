@@ -37,7 +37,8 @@ def freshness_score(updated_ts: int, decay_days: int = 180, now: Optional[float]
     age_days = (_now_ts(now) - updated_ts) / 86400.0
     if age_days < 0:
         age_days = 0.0
-    return math.exp(-age_days / float(decay_days))
+    denom = float(decay_days) if decay_days > 0 else 1.0
+    return math.exp(-age_days / denom)
 
 
 def hybrid_score(

@@ -1,7 +1,4 @@
-import os
 from datetime import datetime, timezone
-
-os.environ.setdefault("KNOWOPS_OFFLINE", "1")
 
 from knowops.search import Candidate, OfflineBackend
 

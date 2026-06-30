@@ -104,7 +104,7 @@ Three pieces, all tunable from `configs/pipeline.yaml` without touching code:
 Full suite runs offline with no services:
 
 ```bash
-KNOWOPS_OFFLINE=1 .venv/bin/python -m pytest tests/ -q
+.venv/bin/python -m pytest tests/ -q
 # 143 passed
 ```
 
@@ -141,7 +141,7 @@ pip install -r requirements.txt
 
 KNOWOPS_OFFLINE=1 python scripts/demo.py                 # baseline vs fixed, side by side
 KNOWOPS_OFFLINE=1 python scripts/ask.py "What is the current API rate limit?" --verbose
-KNOWOPS_OFFLINE=1 python -m pytest tests/ -q             # 143 tests
+python -m pytest tests/ -q                                # 143 tests (hermetic, no env needed)
 ```
 
 ### Live (Milvus + Ollama + OpenRouter)

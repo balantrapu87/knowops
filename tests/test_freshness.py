@@ -1,7 +1,4 @@
 import math
-import os
-
-os.environ.setdefault("KNOWOPS_OFFLINE", "1")
 
 import pytest
 

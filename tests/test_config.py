@@ -1,15 +1,6 @@
-import os
-
-os.environ.setdefault("KNOWOPS_OFFLINE", "1")
-
 import pytest
 
 from knowops.config import SETTINGS, load_settings
-
-# Keep the suite's legacy embedder tests exercising their mocked live path even
-# when the suite is invoked with KNOWOPS_OFFLINE=1; new retrieval tests pass
-# offline=True explicitly.
-SETTINGS.offline = False
 
 
 def test_load_settings_includes_expected_profiles():

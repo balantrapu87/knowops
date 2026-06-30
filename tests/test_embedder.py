@@ -20,6 +20,14 @@ FAKE_VECTOR = [0.0] * 1024
 FAKE_BASE_URL = "http://fake-server:11434"
 
 
+@pytest.fixture(autouse=True)
+def _pin_live_mode(monkeypatch):
+    """Force live (non-offline) routing so these mocked-httpx tests are
+    independent of the KNOWOPS_OFFLINE environment variable."""
+    from knowops.config import SETTINGS
+    monkeypatch.setattr(SETTINGS, "offline", False)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def make_mock_response(json_data: dict, status_code: int = 200) -> MagicMock:

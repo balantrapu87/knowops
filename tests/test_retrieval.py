@@ -1,8 +1,5 @@
 import json
-import os
 from pathlib import Path
-
-os.environ.setdefault("KNOWOPS_OFFLINE", "1")
 
 import pytest
 
