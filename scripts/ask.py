@@ -9,7 +9,7 @@ import os
 import sys
 
 # Allow `import knowops` when the script is executed from the scripts directory.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 try:
     from dotenv import load_dotenv

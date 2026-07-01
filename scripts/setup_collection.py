@@ -13,65 +13,13 @@ import argparse
 import os
 import sys
 
-from pymilvus import connections, utility, Collection
-
 # Allow `import knowops` from the project root
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from pymilvus import MilvusClient
 from knowops.schema import (
-    COLLECTION_NAME, INDEX_PARAMS, VECTOR_DIM, build_schema,
+    COLLECTION_NAME, INDEX_PARAMS, VECTOR_DIM, build_milvus_schema,
 )
-
-
-def connect_milvus(host: str, port: str) -> None:
-    """Open a connection to the Milvus gRPC endpoint."""
-    connections.connect(alias="default", host=host, port=port)
-    print(f"Connected to Milvus at {host}:{port}")
-
-
-def drop_collection_if_exists(name: str) -> None:
-    """Drop the named collection when --force is used."""
-    if utility.has_collection(name):
-        utility.drop_collection(name)
-        print(f"Dropped existing collection '{name}'")
-
-
-def create_collection(force: bool) -> Collection:
-    """Create the knowops_documents collection and build the HNSW index."""
-    if utility.has_collection(COLLECTION_NAME):
-        if not force:
-            print(
-                f"Collection '{COLLECTION_NAME}' already exists. "
-                "Use --force to drop and recreate."
-            )
-            return Collection(COLLECTION_NAME)
-        drop_collection_if_exists(COLLECTION_NAME)
-
-    schema = build_schema()
-    collection = Collection(name=COLLECTION_NAME, schema=schema)
-    print(f"Created collection '{COLLECTION_NAME}' (dim={VECTOR_DIM})")
-
-    # Build HNSW index on the embedding field.
-    # Why HNSW instead of IVF_FLAT:
-    #   IVF_FLAT with low nlist causes O(n) search on large collections,
-    #   producing the timeout bug this project demonstrates and fixes.
-    #   HNSW provides sub-linear query time with no per-query tuning.
-    collection.create_index(field_name="embedding", index_params=INDEX_PARAMS)
-    print(
-        f"Built HNSW index — M={INDEX_PARAMS['params']['M']}, "
-        f"ef_construction={INDEX_PARAMS['params']['ef_construction']}"
-    )
-
-    # Build scalar indexes for fast metadata filtering
-    for field in ("doc_id", "source_type", "updated_date"):
-        collection.create_index(field_name=field, index_name=f"idx_{field}")
-    print("Built scalar indexes on doc_id, source_type, updated_date")
-
-    # Load the collection into memory so it is immediately queryable
-    collection.load()
-    print(f"Collection '{COLLECTION_NAME}' loaded — ready for ingestion")
-
-    return collection
 
 
 def main() -> None:
@@ -85,8 +33,44 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    connect_milvus(args.host, args.port)
-    create_collection(force=args.force)
+    client = MilvusClient(host=args.host, port=args.port)
+    print(f"Connected to Milvus at {args.host}:{args.port}")
+
+    if client.has_collection(COLLECTION_NAME):
+        if not args.force:
+            print(
+                f"Collection '{COLLECTION_NAME}' already exists. "
+                "Use --force to drop and recreate."
+            )
+            client.load_collection(COLLECTION_NAME)
+            print(f"Collection '{COLLECTION_NAME}' loaded — ready for query")
+            return
+        
+        client.drop_collection(COLLECTION_NAME)
+        print(f"Dropped existing collection '{COLLECTION_NAME}'")
+
+    schema = build_milvus_schema()
+    index_params = client.prepare_index_params()
+    index_params.add_index(
+        field_name="embedding",
+        index_type=INDEX_PARAMS["index_type"],
+        metric_type=INDEX_PARAMS["metric_type"],
+        params=INDEX_PARAMS["params"],
+    )
+    # Add scalar indexes for fast filtering
+    index_params.add_index(field_name="doc_id")
+    index_params.add_index(field_name="source_type")
+    index_params.add_index(field_name="updated_date")
+
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        schema=schema,
+        index_params=index_params,
+    )
+    print(f"Created collection '{COLLECTION_NAME}' (dim={VECTOR_DIM})")
+    
+    client.load_collection(COLLECTION_NAME)
+    print(f"Collection '{COLLECTION_NAME}' loaded — ready for ingestion")
     print("Setup complete.")
 
 

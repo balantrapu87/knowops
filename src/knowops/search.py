@@ -29,7 +29,7 @@ from knowops.schema import COLLECTION_NAME, OUTPUT_FIELDS, SEARCH_PARAMS
 
 log = logging.getLogger("knowops.search")
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_DATA_DIR = _PROJECT_ROOT / "data"
 
 

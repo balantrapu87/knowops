@@ -10,7 +10,7 @@ from typing import Optional
 from knowops.config import SETTINGS, Settings
 from knowops.llm import LLMClient
 
-_PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "prompts"
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 

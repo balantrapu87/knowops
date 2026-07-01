@@ -573,17 +573,17 @@ class TestIngestRecords:
 
     # ── Milvus insert payload format ──────────────────────────────────────────
 
-    def test_milvus_receives_column_oriented_dict(self):
-        """Milvus insert() expects {field: [val, val, ...]} not [{field: val}, ...]"""
+    def test_milvus_receives_list_of_dicts(self):
+        """MilvusClient.insert() expects a list of dictionaries data=[{field: val}, ...]"""
         _, _, _, col, _ = self._run([SAMPLE_JIRA], "jira")
-        args, _ = col.insert.call_args
-        column_data = args[0]
-        assert isinstance(column_data, dict)
-        assert "embedding" in column_data
-        assert isinstance(column_data["embedding"], list)
-        assert isinstance(column_data["doc_id"], list)
+        _, kwargs = col.insert.call_args
+        data = kwargs["data"]
+        assert isinstance(data, list)
+        assert isinstance(data[0], dict)
+        assert "embedding" in data[0]
+        assert "doc_id" in data[0]
 
     def test_confluence_source_type_in_milvus_payload(self):
         _, _, _, col, _ = self._run([SAMPLE_CONFLUENCE], "confluence")
-        args, _ = col.insert.call_args
-        assert col.insert.call_args[0][0]["source_type"] == ["confluence"]
+        _, kwargs = col.insert.call_args
+        assert kwargs["data"][0]["source_type"] == "confluence"

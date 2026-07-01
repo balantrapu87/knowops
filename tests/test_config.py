@@ -34,6 +34,8 @@ def test_pipeline_scalar_settings_match_config():
     assert settings.default_time_sensitivity == "medium"
 
 
-def test_settings_llm_offline_when_openrouter_key_absent():
-    assert SETTINGS.openrouter_api_key == ""
-    assert SETTINGS.llm_offline is True
+def test_settings_llm_offline_when_openrouter_key_absent(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    settings = load_settings()
+    assert settings.openrouter_api_key == ""
+    assert settings.llm_offline is True

@@ -26,12 +26,12 @@ from typing import Iterator
 
 from tqdm import tqdm
 from dotenv import load_dotenv
-from pymilvus import connections, Collection
+from pymilvus import MilvusClient
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from knowops.embedder import embed_batch, check_ollama_health
-from knowops.schema import COLLECTION_NAME, OUTPUT_FIELDS, SEARCH_PARAMS
+from knowops.schema import COLLECTION_NAME, OUTPUT_FIELDS, SEARCH_PARAMS, build_milvus_schema, INDEX_PARAMS
 from knowops.db import (
     create_tables, get_session, DocumentMetadata, IngestionRun,
     check_postgres_health,
@@ -148,7 +148,7 @@ def validate_record(record: dict, source: str) -> str | None:
 def ingest_records(
     records: list[dict],
     source_type: str,
-    collection: Collection,
+    client: MilvusClient,
     run_id: str,
     dry_run: bool,
 ) -> tuple[int, int, int]:
@@ -175,8 +175,9 @@ def ingest_records(
 
         # ── 2. Deduplication check ───────────────────────────────────────────
         # Skip embedding if the document hasn't changed since last ingestion.
-        existing = session.get(DocumentMetadata, doc_id)
-        if existing and existing.content_hash == chash and not dry_run:
+        # (Skipped in dry-run mode: Postgres tables may not exist yet.)
+        existing = None if dry_run else session.get(DocumentMetadata, doc_id)
+        if existing and existing.content_hash == chash:
             skipped += 1
             continue
 
@@ -206,9 +207,7 @@ def ingest_records(
             else:
                 entities = build_confluence_entities(record, chunks, vectors)
 
-            # Transpose list-of-dicts → dict-of-lists (Milvus insert format)
-            column_data = {key: [e[key] for e in entities] for key in entities[0]}
-            collection.insert(column_data)
+            client.insert(collection_name=COLLECTION_NAME, data=entities)
         except Exception as exc:
             log.error("Milvus insert failed for %s: %s", doc_id, exc)
             errors += 1
@@ -235,7 +234,8 @@ def ingest_records(
 
         processed += 1
 
-    collection.flush()  # persist buffered inserts to disk
+    if client is not None:
+        client.flush(COLLECTION_NAME)  # persist buffered inserts to disk
     session.close()
     return processed, skipped, errors
 
@@ -274,13 +274,37 @@ def main() -> None:
         if not check_postgres_health():
             sys.exit("ERROR: Postgres is not reachable. Check DATABASE_URL in .env.")
 
-    # ── Connect to Milvus ────────────────────────────────────────────────────
+    # ── Connect to Milvus and ensure collection exists ───────────────────────
     if not args.dry_run:
-        connections.connect(alias="default", host=args.milvus_host, port=args.milvus_port)
-        collection = Collection(COLLECTION_NAME)
-        collection.load()
+        client = MilvusClient(host=args.milvus_host, port=args.milvus_port)
+        if client.has_collection(COLLECTION_NAME):
+            # Check if the collection has a valid index; drop and recreate if not.
+            indexes = client.list_indexes(COLLECTION_NAME)
+            if not indexes:
+                log.warning(
+                    "Collection '%s' exists but has no index — dropping and recreating.",
+                    COLLECTION_NAME,
+                )
+                client.drop_collection(COLLECTION_NAME)
+        if not client.has_collection(COLLECTION_NAME):
+            log.info("Collection '%s' not found — creating it now.", COLLECTION_NAME)
+            schema = build_milvus_schema()
+            index_params = client.prepare_index_params()
+            index_params.add_index(
+                field_name="embedding",
+                index_type=INDEX_PARAMS["index_type"],
+                metric_type=INDEX_PARAMS["metric_type"],
+                params=INDEX_PARAMS["params"],
+            )
+            client.create_collection(
+                collection_name=COLLECTION_NAME,
+                schema=schema,
+                index_params=index_params,
+            )
+            log.info("Collection and HNSW index created successfully.")
+        client.load_collection(COLLECTION_NAME)
     else:
-        collection = None  # type: ignore[assignment]
+        client = None  # type: ignore[assignment]
 
     # ── Create Postgres tables (idempotent) ──────────────────────────────────
     if not args.dry_run:
@@ -299,7 +323,7 @@ def main() -> None:
         with open(path) as f:
             records = json.load(f)
         log.info("Loaded %d Jira tickets from %s", len(records), path)
-        p, s, e = ingest_records(records, "jira", collection, run_id, args.dry_run)
+        p, s, e = ingest_records(records, "jira", client, run_id, args.dry_run)
         total_processed += p; total_skipped += s; total_errors += e
 
     # ── Ingest Confluence pages ───────────────────────────────────────────────
@@ -308,7 +332,7 @@ def main() -> None:
         with open(path) as f:
             records = json.load(f)
         log.info("Loaded %d Confluence pages from %s", len(records), path)
-        p, s, e = ingest_records(records, "confluence", collection, run_id, args.dry_run)
+        p, s, e = ingest_records(records, "confluence", client, run_id, args.dry_run)
         total_processed += p; total_skipped += s; total_errors += e
 
     # ── Save run summary to Postgres ─────────────────────────────────────────
