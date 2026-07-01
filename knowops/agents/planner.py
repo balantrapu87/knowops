@@ -2,24 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 
 from knowops.agents.base import Agent
 
-_RECENCY_WORDS = {
-    "current", "currently", "latest", "now", "today", "recent", "recently",
-    "updated", "newest", "change", "changed", "procedure", "policy", "escalation",
-    "version", "correct", "recommended", "supported", "deprecated", "still",
-    "valid", "new", "present",
-}
-_JIRA_WORDS = {
-    "jira", "bug", "bugs", "ticket", "tickets", "incident", "incidents",
-    "assignee", "assigned", "priority", "status", "crash", "error", "timeout",
-}
-_CONFLUENCE_WORDS = {
-    "confluence", "doc", "docs", "documentation", "runbook", "guide", "page",
-    "pages", "wiki", "procedure", "policy", "configuration", "config", "faq",
-}
+log = logging.getLogger("knowops.planner")
 
 _DEFAULTS = {
     "intent": "general_qa",
@@ -34,10 +22,16 @@ class Planner(Agent):
     prompt_filename = "planner.md"
 
     def run(self, question: str) -> dict:
+        log.info("[Planner] question: %r", question)
         if self.offline:
-            return self._plan_offline(question)
-        raw = self.llm.complete(self.load_prompt(), question, json_mode=True)
-        return self._normalise(self.parse_json(raw), question)
+            plan = self._plan_offline(question)
+        else:
+            raw = self.llm.complete(self.load_prompt(), question, json_mode=True)
+            plan = self._normalise(self.parse_json(raw), question)
+        log.info("[Planner] plan → intent=%s  time_sensitivity=%s  source=%s  recency=%s",
+                 plan.get("intent"), plan.get("time_sensitivity"),
+                 plan.get("source_preference"), plan.get("recency_required"))
+        return plan
 
     # ── live-output normalisation ────────────────────────────────────────────
     def _normalise(self, plan: dict, question: str) -> dict:
@@ -50,12 +44,14 @@ class Planner(Agent):
 
     # ── deterministic offline planner ────────────────────────────────────────
     def _plan_offline(self, question: str) -> dict:
+        kw = self.settings.planner_keywords
         words = set(re.findall(r"[a-z0-9]+", question.lower()))
 
-        recency = bool(words & _RECENCY_WORDS)
+        recency = bool(words & kw.recency_words)
         time_sensitivity = "high" if recency else "medium"
 
-        jira_hits, conf_hits = len(words & _JIRA_WORDS), len(words & _CONFLUENCE_WORDS)
+        jira_hits = len(words & kw.jira_words)
+        conf_hits = len(words & kw.confluence_words)
         if jira_hits > conf_hits:
             source = "jira"
         elif conf_hits > jira_hits:
@@ -63,14 +59,11 @@ class Planner(Agent):
         else:
             source = "both"
 
-        if words & {"bug", "bugs", "crash", "error", "timeout", "incident"}:
-            intent = "bug_lookup"
-        elif words & {"status", "state", "progress", "assigned"}:
-            intent = "status_check"
-        elif words & {"doc", "docs", "guide", "procedure", "policy", "configuration", "config", "how"}:
-            intent = "doc_lookup"
-        else:
-            intent = "general_qa"
+        intent = "general_qa"
+        for intent_label, triggers in kw.intent_words.items():
+            if words & triggers:
+                intent = intent_label
+                break
 
         return {
             "intent": intent,

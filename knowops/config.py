@@ -49,6 +49,20 @@ class FreshnessProfile:
     date_filter_days: Optional[int] = None
 
 
+@dataclass(frozen=True)
+class PlannerKeywords:
+    """Keyword sets from configs/pipeline.yaml used by the offline Planner.
+
+    In live mode the LLM classifies questions; these sets are the deterministic
+    fallback (and are therefore business logic that lives in config, not code).
+    """
+    recency_words: frozenset
+    jira_words: frozenset
+    confluence_words: frozenset
+    # Maps intent label → frozenset of trigger words (ordered: first match wins)
+    intent_words: dict
+
+
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -75,6 +89,8 @@ class Settings:
     relevance_floor_ratio: float
     # Freshness profiles keyed by time_sensitivity (high|medium|low)
     profiles: dict[str, FreshnessProfile]
+    # Offline planner keyword sets (loaded from pipeline.yaml)
+    planner_keywords: PlannerKeywords
 
     @property
     def llm_offline(self) -> bool:
@@ -105,6 +121,17 @@ def _load_profiles(raw: dict) -> dict[str, FreshnessProfile]:
     if not profiles:
         raise ValueError("configs/pipeline.yaml defines no freshness_profiles")
     return profiles
+
+
+def _load_planner_keywords(raw: dict) -> PlannerKeywords:
+    kw = raw.get("planner_keywords") or {}
+    intent_raw = kw.get("intent_words") or {}
+    return PlannerKeywords(
+        recency_words=frozenset(kw.get("recency_words") or []),
+        jira_words=frozenset(kw.get("jira_words") or []),
+        confluence_words=frozenset(kw.get("confluence_words") or []),
+        intent_words={intent: frozenset(words) for intent, words in intent_raw.items()},
+    )
 
 
 def load_settings(pipeline_config_path: Optional[str | Path] = None) -> Settings:
@@ -140,7 +167,7 @@ def load_settings(pipeline_config_path: Optional[str | Path] = None) -> Settings
             "postgresql://knowops:knowops_dev@localhost:5432/knowops",
         ),
         openrouter_api_key=os.getenv("OPENROUTER_API_KEY", "").strip(),
-        openrouter_model=os.getenv("OPENROUTER_MODEL", "anthropic/claude-sonnet-4"),
+        openrouter_model=os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash"),
         openrouter_base_url=os.getenv(
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         ),
@@ -156,6 +183,7 @@ def load_settings(pipeline_config_path: Optional[str | Path] = None) -> Settings
             os.getenv("RELEVANCE_FLOOR_RATIO", pipe.get("relevance_floor_ratio", 0.7))
         ),
         profiles=profiles,
+        planner_keywords=_load_planner_keywords(raw),
     )
 
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 
@@ -19,6 +20,48 @@ except Exception:
 
 from knowops.config import SETTINGS
 from knowops.pipeline import Pipeline, PipelineResult
+
+
+def _setup_logging(verbose: bool) -> None:
+    """Configure pipeline logs to stderr and a rotating hourly file in ./logs/."""
+    import datetime
+    from pathlib import Path
+
+    level = logging.DEBUG if verbose else logging.INFO
+
+    # ── stderr handler (coloured) ────────────────────────────────────────────
+    console = logging.StreamHandler(sys.stderr)
+    console.setFormatter(logging.Formatter(
+        "\033[2m%(asctime)s\033[0m  \033[36m%(name)s\033[0m  %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+
+    # ── file handler (plain, hourly rotation: logs/yyyymmddhh.log) ──────────
+    log_dir = Path(__file__).resolve().parent.parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"{datetime.datetime.now().strftime('%Y%m%d%H')}.log"
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+
+    # ── attach both handlers to knowops.* loggers ────────────────────────────
+    for name in ("knowops.planner", "knowops.retriever", "knowops.reranker",
+                  "knowops.llm", "knowops.search"):
+        lg = logging.getLogger(name)
+        lg.setLevel(level)
+        lg.addHandler(console)
+        lg.addHandler(file_handler)
+        lg.propagate = False
+
+    # Suppress httpx / httpcore request lines
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    logging.getLogger("knowops.search").info(
+        "[logging] session log → %s", log_file
+    )
 
 
 def env_truthy(name: str) -> bool:
@@ -84,6 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
+    _setup_logging(args.verbose)
     pipeline = Pipeline(settings=SETTINGS, offline=choose_offline(args))
     print(f"KnowOps ask — mode={pipeline.mode}")
 

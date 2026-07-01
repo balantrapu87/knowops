@@ -51,3 +51,95 @@ freshness_profiles:
     freshness_weight: 0.25
     decay_days: 240
     date_filter_days: null
+
+# ---------------------------------------------------------------------------
+# Planner keyword lists — used by the OFFLINE planner to classify questions
+# without calling an LLM. In live mode the LLM handles this; these lists are
+# the fallback. Tune here, not in planner.py.
+# ---------------------------------------------------------------------------
+planner_keywords:
+
+  # Words that signal the user wants current/live information.
+  # Triggers time_sensitivity: high and recency_required: true.
+  recency_words:
+    - current
+    - currently
+    - latest
+    - now
+    - today
+    - recent
+    - recently
+    - updated
+    - newest
+    - change
+    - changed
+    - procedure
+    - policy
+    - escalation
+    - version
+    - correct
+    - recommended
+    - supported
+    - deprecated
+    - still
+    - valid
+    - new
+    - present
+
+  # Words that indicate the question is about Jira tickets / incidents.
+  jira_words:
+    - jira
+    - bug
+    - bugs
+    - ticket
+    - tickets
+    - incident
+    - incidents
+    - assignee
+    - assigned
+    - priority
+    - status
+    - crash
+    - error
+    - timeout
+
+  # Words that indicate the question is about Confluence docs / runbooks.
+  confluence_words:
+    - confluence
+    - doc
+    - docs
+    - documentation
+    - runbook
+    - guide
+    - page
+    - pages
+    - wiki
+    - procedure
+    - policy
+    - configuration
+    - config
+    - faq
+
+  # Per-intent trigger words. First match wins; falls back to general_qa.
+  intent_words:
+    bug_lookup:
+      - bug
+      - bugs
+      - crash
+      - error
+      - timeout
+      - incident
+    status_check:
+      - status
+      - state
+      - progress
+      - assigned
+    doc_lookup:
+      - doc
+      - docs
+      - guide
+      - procedure
+      - policy
+      - configuration
+      - config
+      - how

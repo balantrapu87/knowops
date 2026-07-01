@@ -16,6 +16,7 @@ by the Retriever agent using the configured FreshnessProfile.
 from __future__ import annotations
 
 import json
+import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -24,6 +25,9 @@ from typing import Optional
 
 from knowops.config import SETTINGS, Settings
 from knowops.embedder import embed, embed_offline
+from knowops.schema import COLLECTION_NAME, OUTPUT_FIELDS, SEARCH_PARAMS
+
+log = logging.getLogger("knowops.search")
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_DATA_DIR = _PROJECT_ROOT / "data"
@@ -145,26 +149,25 @@ class MilvusBackend:
 
     def __init__(self, settings: Settings = SETTINGS):
         self.settings = settings
-        self._collection = None
+        self._client = None
 
     def _connect(self):
-        if self._collection is not None:
-            return self._collection
-        from pymilvus import connections, Collection
-        from knowops.schema import COLLECTION_NAME
-
-        connections.connect(
-            alias="default",
+        if self._client is not None:
+            return self._client
+        from pymilvus import MilvusClient
+        log.info("[Milvus] connecting to %s:%s, loading collection '%s'",
+                 self.settings.milvus_host, self.settings.milvus_port, COLLECTION_NAME)
+        client = MilvusClient(
             host=self.settings.milvus_host,
             port=self.settings.milvus_port,
         )
-        col = Collection(COLLECTION_NAME)
-        col.load()
-        self._collection = col
-        return col
+        client.load_collection(COLLECTION_NAME)
+        log.info("[Milvus] connected and collection loaded")
+        self._client = client
+        return client
 
     @staticmethod
-    def _build_expr(source_filter: str, cutoff: Optional[int]) -> Optional[str]:
+    def _build_filter(source_filter: str, cutoff: Optional[int]) -> Optional[str]:
         clauses = []
         if source_filter in ("jira", "confluence"):
             clauses.append(f'source_type == "{source_filter}"')
@@ -180,28 +183,28 @@ class MilvusBackend:
         date_filter_days: Optional[int] = None,
         now: Optional[float] = None,
     ) -> list[Candidate]:
-        from knowops.schema import OUTPUT_FIELDS, SEARCH_PARAMS
-
-        col = self._connect()
+        client = self._connect()
         qvec = embed(query_text, base_url=self.settings.ollama_base_url, offline=False)
 
         cutoff = None
         if date_filter_days is not None:
             cutoff = int(_now_ts(now) - date_filter_days * 86400)
-        expr = self._build_expr(source_filter, cutoff)
+        filter_expr = self._build_filter(source_filter, cutoff)
 
-        results = col.search(
+        results = client.search(
+            collection_name=COLLECTION_NAME,
             data=[qvec],
             anns_field="embedding",
-            param=SEARCH_PARAMS,
+            search_params=SEARCH_PARAMS,
             limit=top_k,
-            expr=expr,
+            filter=filter_expr,
             output_fields=OUTPUT_FIELDS,
         )
 
         candidates: list[Candidate] = []
         for hit in results[0]:
-            e = hit.entity
+            # MilvusClient returns output fields under hit["entity"]
+            e = hit.get("entity", hit)
             candidates.append(
                 Candidate(
                     doc_id=e.get("doc_id"),
@@ -212,10 +215,11 @@ class MilvusBackend:
                     updated_ts=int(e.get("updated_date")),
                     trap_group=e.get("trap_group") or "",
                     chunk_index=int(e.get("chunk_index") or 0),
-                    semantic_score=max(0.0, float(hit.distance)),
+                    semantic_score=max(0.0, float(hit["distance"])),
                 )
             )
         return _collapse_by_doc(candidates)[:top_k]
+
 
 
 # ── Factory ──────────────────────────────────────────────────────────────────

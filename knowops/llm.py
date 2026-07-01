@@ -9,11 +9,15 @@ is true whenever KNOWOPS_OFFLINE is set or no OPENROUTER_API_KEY is configured.
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Optional
 
 import httpx
 
 from knowops.config import SETTINGS, Settings
+
+log = logging.getLogger("knowops.llm")
 
 
 class LLMClient:
@@ -40,6 +44,9 @@ class LLMClient:
         if self.offline:
             raise RuntimeError("LLMClient.complete() called in offline mode")
 
+        log.info("── LLM call ▶  model=%s  json_mode=%s", self.model, json_mode)
+        log.debug("   user_content: %s", user_content[:300])
+
         payload: dict = {
             "model": self.model,
             "messages": [
@@ -61,4 +68,17 @@ class LLMClient:
             timeout=timeout,
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        content = resp.json()["choices"][0]["message"]["content"]
+
+        # Pretty-print JSON responses; fall back to raw text
+        if json_mode:
+            try:
+                parsed = json.loads(content)
+                log.info("   ◀ response [%s]:\n%s", self.model,
+                         json.dumps(parsed, indent=2, ensure_ascii=False))
+            except json.JSONDecodeError:
+                log.info("   ◀ response [%s] (raw): %s", self.model, content[:500])
+        else:
+            log.info("   ◀ response [%s]: %s…", self.model, content[:200])
+
+        return content

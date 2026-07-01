@@ -8,6 +8,7 @@ The LLM only optimises the query *text*; the config owns the recency behaviour.
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from knowops.agents.base import Agent
@@ -15,6 +16,8 @@ from knowops.config import SETTINGS, Settings
 from knowops.freshness import freshness_score, score_with_profile
 from knowops.llm import LLMClient
 from knowops.search import Candidate, get_backend
+
+log = logging.getLogger("knowops.retriever")
 
 
 class RetrieverAgent(Agent):
@@ -36,6 +39,12 @@ class RetrieverAgent(Agent):
         profile = self.settings.get_profile(plan.get("time_sensitivity"))
         params = self._search_params(plan, profile)
 
+        log.info("[Retriever] profile=%s  semantic_w=%.2f  freshness_w=%.2f  decay=%dd",
+                 profile.name, profile.semantic_weight, profile.freshness_weight, profile.decay_days)
+        log.info("[Retriever] search_query=%r  source=%s  limit=%d  date_filter=%s",
+                 params["search_query"], params["source_filter"],
+                 params["limit"], params["date_filter_days"])
+
         candidates = self.backend.semantic_search(
             query_text=params["search_query"],
             top_k=params["limit"],
@@ -43,14 +52,22 @@ class RetrieverAgent(Agent):
             date_filter_days=params["date_filter_days"],
             now=now,
         )
+        log.info("[Retriever] vector search returned %d candidates", len(candidates))
 
         candidates = self._apply_relevance_floor(candidates)
+        log.info("[Retriever] after relevance floor: %d candidates remain", len(candidates))
 
         for c in candidates:
             c.freshness_score = freshness_score(c.updated_ts, profile.decay_days, now=now)
             c.hybrid_score = score_with_profile(c.semantic_score, c.updated_ts, profile, now=now)
 
         candidates.sort(key=lambda c: c.hybrid_score, reverse=True)
+
+        log.info("[Retriever] top-%d hybrid scores:", min(3, len(candidates)))
+        for c in candidates[:3]:
+            log.info("   %s | semantic=%.3f  freshness=%.3f  hybrid=%.3f | updated=%s",
+                     c.doc_id, c.semantic_score, c.freshness_score, c.hybrid_score, c.updated_date)
+
         return params, candidates
 
     def _apply_relevance_floor(self, candidates: list[Candidate]) -> list[Candidate]:

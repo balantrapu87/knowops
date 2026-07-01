@@ -7,11 +7,14 @@ In live mode the LLM only writes the human-readable reasoning string.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 from knowops.agents.base import Agent
 from knowops.search import Candidate
+
+log = logging.getLogger("knowops.reranker")
 
 
 def _now_ts(now: Optional[float]) -> float:
@@ -27,7 +30,15 @@ class Reranker(Agent):
         ranked = sorted(candidates, key=lambda c: c.hybrid_score, reverse=True)
         top = ranked[: self.settings.reranker_top_k]
 
+        log.info("[Reranker] selected top-%d docs from %d candidates:",
+                 len(top), len(candidates))
+        for c in top:
+            log.info("   %s | hybrid=%.3f | updated=%s | %s",
+                     c.doc_id, c.hybrid_score, c.updated_date, c.title[:60])
+
         warning, message = self._freshness_warning(top, now)
+        if warning:
+            log.info("[Reranker] ⚠ freshness warning: %s", message)
         reasoning = self._reasoning(query, top, warning)
 
         out = {
