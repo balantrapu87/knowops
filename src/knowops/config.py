@@ -75,6 +75,7 @@ class Settings:
     openrouter_api_key: str
     openrouter_model: str
     openrouter_base_url: str
+    openrouter_timeout: float
     # Mode
     offline: bool
     # Pipeline scalars
@@ -171,6 +172,7 @@ def load_settings(pipeline_config_path: Optional[str | Path] = None) -> Settings
         openrouter_base_url=os.getenv(
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         ),
+        openrouter_timeout=float(os.getenv("OPENROUTER_TIMEOUT", "15.0")),
         offline=_as_bool(os.getenv("KNOWOPS_OFFLINE"), default=False),
         retriever_top_k=_int("RETRIEVER_TOP_K", "retriever_top_k", 20),
         reranker_top_k=_int("RERANKER_TOP_K", "reranker_top_k", 5),

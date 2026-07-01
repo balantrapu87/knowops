@@ -34,7 +34,7 @@ class LLMClient:
         user_content: str,
         json_mode: bool = False,
         temperature: float = 0.2,
-        timeout: float = 60.0,
+        timeout: Optional[float] = None,
     ) -> str:
         """Return the assistant message text for a system+user prompt.
 
@@ -43,6 +43,8 @@ class LLMClient:
         """
         if self.offline:
             raise RuntimeError("LLMClient.complete() called in offline mode")
+
+        to = timeout if timeout is not None else self.settings.openrouter_timeout
 
         log.info("── LLM call ▶  model=%s  json_mode=%s", self.model, json_mode)
         log.debug("   user_content: %s", user_content[:300])
@@ -65,7 +67,7 @@ class LLMClient:
                 "Content-Type": "application/json",
             },
             json=payload,
-            timeout=timeout,
+            timeout=to,
         )
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"]
