@@ -50,7 +50,7 @@ question
      ▼                                           ▼
 ┌──────────┐   vector search    ┌────────────────────────────────────┐
 │Retriever │ ─────────────────► │ relevance floor → hybrid_score      │
-│ (LLM+code)│   (Milvus / offline)│ (knowops/freshness.py)             │
+│ (LLM+code)│   (Milvus / offline)│ (src/knowops/freshness.py)          │
 └────┬─────┘                     └────────────────────────────────────┘
      │ scored candidates
      ▼
@@ -79,7 +79,7 @@ from `prompts/*.md`. The LLM plans, optimizes the query, explains, and writes pr
 
 Three pieces, all tunable from `configs/pipeline.yaml` without touching code:
 
-1. **Freshness scoring** (`knowops/freshness.py`) — an exponential recency bonus blended
+1. **Freshness scoring** (`src/knowops/freshness.py`) — an exponential recency bonus blended
    with semantic similarity. Because each trap's correct doc is the *newer* one, a non-zero
    `freshness_weight` lets it overtake a stale doc that's marginally more similar.
 
@@ -139,9 +139,9 @@ trap-milvus-index-type   Query: Recommended Milvus index type for KnowOps
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-KNOWOPS_OFFLINE=1 python scripts/demo.py                 # baseline vs fixed, side by side
-KNOWOPS_OFFLINE=1 python scripts/ask.py "What is the current API rate limit?" --verbose
-python -m pytest tests/ -q                                # 143 tests (hermetic, no env needed)
+KNOWOPS_OFFLINE=1 .venv/bin/python scripts/demo.py                 # baseline vs fixed, side by side
+KNOWOPS_OFFLINE=1 .venv/bin/python scripts/ask.py "What is the current API rate limit?" --verbose
+.venv/bin/python -m pytest tests/ -q                                # 143 tests (hermetic, no env needed)
 ```
 
 ### Live (Milvus + Ollama + OpenRouter)
@@ -181,14 +181,15 @@ profiles; secrets and endpoints live in [`.env`](.env.example).
 KnowOps/
 ├── configs/pipeline.yaml        # freshness profiles + pipeline tunables
 ├── prompts/                     # planner / retriever / reranker / answering system prompts
-├── knowops/
-│   ├── config.py                # .env + yaml → Settings + FreshnessProfile; offline flag
-│   ├── freshness.py             # freshness_score / hybrid_score (the fix, in code)
-│   ├── embedder.py              # Ollama bge-m3 + deterministic offline embeddings
-│   ├── search.py                # Milvus + offline brute-force backends
-│   ├── llm.py                   # OpenRouter client
-│   ├── pipeline.py              # orchestrator + baseline/fixed retrieval
-│   └── agents/                  # Planner, RetrieverAgent, Reranker, Answering
+├── src/
+│   └── knowops/                 # unified python package
+│       ├── config.py            # .env + yaml → Settings + FreshnessProfile; offline flag
+│       ├── freshness.py         # freshness_score / hybrid_score (the fix, in code)
+│       ├── embedder.py          # Ollama bge-m3 + deterministic offline embeddings
+│       ├── search.py            # Milvus + offline brute-force backends
+│       ├── llm.py               # OpenRouter client
+│       ├── pipeline.py          # orchestrator + baseline/fixed retrieval
+│       └── agents/              # Planner, RetrieverAgent, Reranker, Answering
 ├── scripts/
 │   ├── setup_collection.py      # create Milvus collection (live)
 │   ├── ingest.py                # ingest data → Milvus + Postgres (live)
