@@ -45,6 +45,7 @@ class LLMClient:
             raise RuntimeError("LLMClient.complete() called in offline mode")
 
         to = timeout if timeout is not None else self.settings.openrouter_timeout
+        print(f"[LLM DEBUG] Calling LLM complete: model={self.model}, timeout={to}")
 
         log.info("── LLM call ▶  model=%s  json_mode=%s", self.model, json_mode)
         log.debug("   user_content: %s", user_content[:300])
@@ -60,17 +61,34 @@ class LLMClient:
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
 
-        resp = httpx.post(
-            f"{self.base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=to,
-        )
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
+        import signal
+
+        class LLMTimeoutException(Exception):
+            pass
+
+        def alarm_handler(signum, frame):
+            raise LLMTimeoutException(f"LLM call strictly timed out after {to} seconds")
+
+        has_alarm = hasattr(signal, "alarm")
+        if has_alarm:
+            signal.signal(signal.SIGALRM, alarm_handler)
+            signal.alarm(max(1, int(to)))
+
+        try:
+            resp = httpx.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=to,
+            )
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+        finally:
+            if has_alarm:
+                signal.alarm(0)
 
         # Pretty-print JSON responses; fall back to raw text
         if json_mode:
